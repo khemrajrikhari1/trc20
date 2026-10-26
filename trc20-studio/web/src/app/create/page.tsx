@@ -14,17 +14,12 @@ import {
 import { usePollPending } from "@/lib/use-poll";
 import type { DeploymentRow } from "@/lib/types";
 
-const STEPS = [
-  { title: "Name and symbol", fields: ["name", "symbol", "decimals"] },
-  { title: "Supply", fields: ["initialSupply", "mintable", "cap"] },
-  { title: "Profile", fields: ["description", "website", "logoUrl"] },
-  { title: "Review and deploy", fields: [] },
-] as const;
-
 const EMPTY: TokenForm = {
   name: "", symbol: "", decimals: 6, initialSupply: "", mintable: false, cap: "",
   description: "", website: "", logoUrl: "",
 };
+
+const ALL_FIELDS = Object.keys(EMPTY);
 
 export default function CreatePage() {
   return (
@@ -32,18 +27,17 @@ export default function CreatePage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Create a token</h1>
         <p className="mt-1 text-[15px] text-muted max-w-prose">
-          Deploys a standard TRC20 contract from your wallet. You own the contract and pay the network fee.
-          Try it on a testnet first.
+          Fill in the details and deploy a standard TRC20 contract from your wallet. You own the contract and pay the
+          network fee. Try it on a testnet first.
         </p>
       </div>
-      <Gate><Wizard /></Gate>
+      <Gate><Generator /></Gate>
     </div>
   );
 }
 
-function Wizard() {
+function Generator() {
   const w = useWallet();
-  const [step, setStep] = useState(0);
   const [form, setForm] = useState<TokenForm>(EMPTY);
   const [touched, setTouched] = useState<Set<string>>(new Set());
   const [deployment, setDeployment] = useState<DeploymentRow | null>(null);
@@ -56,120 +50,88 @@ function Wizard() {
   }, [parsed]);
 
   const set = <K extends keyof TokenForm>(k: K, v: TokenForm[K]) => setForm((f) => ({ ...f, [k]: v }));
-  const stepErrors = (i: number) => (STEPS[i].fields as readonly string[]).filter((f) => errors[f]);
-  const next = () => {
-    setTouched((t) => new Set([...t, ...STEPS[step].fields]));
-    if (stepErrors(step).length === 0) setStep((s) => Math.min(s + 1, STEPS.length - 1));
-  };
+  const touch = (k: string) => setTouched((t) => new Set(t).add(k));
   const err = (k: string) => (touched.has(k) ? errors[k] : undefined);
 
   if (deployment) return <DeployTracker initial={deployment} />;
 
   return (
     <div className="space-y-6">
-      <ol className="flex flex-wrap gap-2" aria-label="Steps">
-        {STEPS.map((s, i) => (
-          <li key={s.title}>
-            <button
-              type="button"
-              onClick={() => i < step && setStep(i)}
-              disabled={i > step}
-              aria-current={i === step ? "step" : undefined}
-              className={cx(
-                "rounded-full border px-3 py-1 text-sm",
-                i === step ? "border-signal bg-signal text-white" : i < step ? "border-line bg-surface text-ink hover:border-signal" : "border-line text-muted",
-              )}
-            >
-              {i + 1}. {s.title}
-            </button>
-          </li>
-        ))}
-      </ol>
-
-      {step === 0 && (
-        <Panel>
-          <div className="space-y-5">
+      <Panel title="Token details">
+        <div className="space-y-5">
+          <div className="grid gap-5 sm:grid-cols-2">
             <Field label="Token name" htmlFor="name" error={err("name")} hint="Shown in wallets, e.g. Acme Points">
               <input id="name" className={inputCls} value={form.name} maxLength={40} autoComplete="off"
-                onChange={(e) => set("name", e.target.value)} onBlur={() => setTouched((t) => new Set(t).add("name"))} />
+                onChange={(e) => set("name", e.target.value)} onBlur={() => touch("name")} />
             </Field>
             <Field label="Symbol" htmlFor="symbol" error={err("symbol") ?? (form.symbol && errors.symbol)} hint="2–10 letters or numbers, e.g. ACME">
               <input id="symbol" className={cx(inputCls, "uppercase")} value={form.symbol} maxLength={10} autoComplete="off"
-                onChange={(e) => set("symbol", e.target.value.toUpperCase())} onBlur={() => setTouched((t) => new Set(t).add("symbol"))} />
-            </Field>
-            <Field label="Decimal places" htmlFor="decimals" error={err("decimals")} hint="How finely the token can be split. 6 matches most TRON tokens; 0 makes it whole units only.">
-              <input id="decimals" type="number" min={0} max={18} className={cx(inputCls, "w-28")} value={form.decimals}
-                onChange={(e) => set("decimals", Number(e.target.value))} />
+                onChange={(e) => set("symbol", e.target.value.toUpperCase())} onBlur={() => touch("symbol")} />
             </Field>
           </div>
-        </Panel>
-      )}
 
-      {step === 1 && (
-        <Panel>
-          <div className="space-y-5">
-            <Field label="Initial supply" htmlFor="supply" error={err("initialSupply")} hint="Whole tokens. All of it goes to your connected wallet.">
+          <div className="grid gap-5 sm:grid-cols-[1fr_auto]">
+            <Field label="Total supply" htmlFor="supply" error={err("initialSupply")} hint="Whole tokens. All of it goes to your connected wallet.">
               <input id="supply" inputMode="numeric" className={inputCls} value={form.initialSupply} placeholder="1000000"
-                onChange={(e) => set("initialSupply", e.target.value.replace(/[^\d]/g, ""))} />
+                onChange={(e) => set("initialSupply", e.target.value.replace(/[^\d]/g, ""))} onBlur={() => touch("initialSupply")} />
             </Field>
+            <Field label="Decimals" htmlFor="decimals" error={err("decimals")} hint="6 is standard on TRON">
+              <input id="decimals" type="number" min={0} max={18} className={cx(inputCls, "w-28")} value={form.decimals}
+                onChange={(e) => set("decimals", Number(e.target.value))} onBlur={() => touch("decimals")} />
+            </Field>
+          </div>
 
-            <fieldset className="space-y-3">
-              <legend className="text-sm font-medium">Supply model</legend>
-              {[
-                { v: false, t: "Fixed supply", d: "No one, including you, can ever create more. The contract has no owner or admin functions." },
-                { v: true, t: "Mintable by you", d: "Your wallet can create more later, up to an optional cap. You can give up this right permanently at any time." },
-              ].map((o) => (
-                <label key={String(o.v)} className={cx("flex gap-3 rounded-control border p-4 cursor-pointer", form.mintable === o.v ? "border-signal bg-signal/5" : "border-line")}>
-                  <input type="radio" name="mintable" className="mt-1 accent-[rgb(var(--signal))]" checked={form.mintable === o.v}
-                    onChange={() => { set("mintable", o.v); if (!o.v) set("cap", ""); }} />
-                  <span>
-                    <span className="block font-medium">{o.t}</span>
-                    <span className="block text-sm text-muted mt-0.5">{o.d}</span>
-                  </span>
-                </label>
-              ))}
-            </fieldset>
+          <label className="flex gap-3 rounded-control border border-line p-4 cursor-pointer">
+            <input type="checkbox" className="mt-1 accent-[rgb(var(--signal))]" checked={form.mintable}
+              onChange={(e) => { set("mintable", e.target.checked); if (!e.target.checked) set("cap", ""); }} />
+            <span>
+              <span className="block font-medium">Let me mint more later</span>
+              <span className="block text-sm text-muted mt-0.5">
+                {form.mintable
+                  ? "Your wallet can create more tokens, up to the optional cap below. You can give up this right permanently at any time."
+                  : "Off: the supply is fixed forever. The contract has no owner or admin functions."}
+              </span>
+            </span>
+          </label>
 
-            {form.mintable && (
-              <Field label="Maximum supply (optional)" htmlFor="cap" error={err("cap")} hint="Leave empty for no cap. Holders tend to trust capped tokens more.">
-                <input id="cap" inputMode="numeric" className={inputCls} value={form.cap} placeholder="No cap"
-                  onChange={(e) => set("cap", e.target.value.replace(/[^\d]/g, ""))} />
+          {form.mintable && (
+            <Field label="Maximum supply (optional)" htmlFor="cap" error={err("cap")} hint="Leave empty for no cap. Holders tend to trust capped tokens more.">
+              <input id="cap" inputMode="numeric" className={inputCls} value={form.cap} placeholder="No cap"
+                onChange={(e) => set("cap", e.target.value.replace(/[^\d]/g, ""))} onBlur={() => touch("cap")} />
+            </Field>
+          )}
+
+          <details className="group rounded-control border border-line">
+            <summary className="cursor-pointer px-4 py-3 text-sm font-medium">More details (optional)</summary>
+            <div className="space-y-5 border-t border-line p-4">
+              <p className="text-sm text-muted">Stored with your deployment record in this app — not written to the contract.</p>
+              <Field label="Description" htmlFor="desc" error={err("description")}>
+                <textarea id="desc" rows={3} maxLength={500} className={cx(inputCls, "h-auto py-2")} value={form.description}
+                  onChange={(e) => set("description", e.target.value)} />
               </Field>
-            )}
-          </div>
-        </Panel>
-      )}
+              <Field label="Website" htmlFor="web" error={err("website")}>
+                <input id="web" type="url" className={inputCls} placeholder="https://" value={form.website}
+                  onChange={(e) => set("website", e.target.value)} onBlur={() => touch("website")} />
+              </Field>
+              <Field label="Logo URL" htmlFor="logo" error={err("logoUrl")} hint="A square PNG or SVG. You can also add it on TRONSCAN after verifying the contract.">
+                <input id="logo" type="url" className={inputCls} placeholder="https://" value={form.logoUrl}
+                  onChange={(e) => set("logoUrl", e.target.value)} onBlur={() => touch("logoUrl")} />
+              </Field>
+            </div>
+          </details>
+        </div>
+      </Panel>
 
-      {step === 2 && (
-        <Panel>
-          <div className="space-y-5">
-            <p className="text-sm text-muted">Optional. Stored with your deployment record in this app — not written to the contract.</p>
-            <Field label="Description" htmlFor="desc" error={err("description")}>
-              <textarea id="desc" rows={3} maxLength={500} className={cx(inputCls, "h-auto py-2")} value={form.description}
-                onChange={(e) => set("description", e.target.value)} />
-            </Field>
-            <Field label="Website" htmlFor="web" error={err("website")}>
-              <input id="web" type="url" className={inputCls} placeholder="https://" value={form.website}
-                onChange={(e) => set("website", e.target.value)} onBlur={() => setTouched((t) => new Set(t).add("website"))} />
-            </Field>
-            <Field label="Logo URL" htmlFor="logo" error={err("logoUrl")} hint="A square PNG or SVG. You can also add it on TRONSCAN after verifying the contract.">
-              <input id="logo" type="url" className={inputCls} placeholder="https://" value={form.logoUrl}
-                onChange={(e) => set("logoUrl", e.target.value)} onBlur={() => setTouched((t) => new Set(t).add("logoUrl"))} />
-            </Field>
-          </div>
-        </Panel>
-      )}
-
-      {step === 3 && parsed.success && <Review form={parsed.data} onDeployed={setDeployment} />}
-      {step === 3 && !parsed.success && <Notice tone="bad">Some details need fixing. Go back to the step marked with an error.</Notice>}
-
-      {step < 3 && (
-        <div className="flex justify-between">
-          <Button variant="quiet" onClick={() => setStep((s) => Math.max(0, s - 1))} disabled={step === 0}>Back</Button>
-          <Button onClick={next}>Continue</Button>
+      {parsed.success ? (
+        <Review form={parsed.data} onDeployed={setDeployment} />
+      ) : (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-muted">Fill in a name, symbol and supply to see the fee and deploy.</p>
+          <Button onClick={() => setTouched(new Set(ALL_FIELDS))}>Deploy token</Button>
         </div>
       )}
-      {!w.network || !NETWORKS[w.network].isTestnet ? null : (
+
+      {w.network && NETWORKS[w.network].isTestnet && (
         <p className="text-sm text-muted">Deploying to {NETWORKS[w.network].label}. Tokens here are for testing only.</p>
       )}
     </div>
@@ -226,17 +188,8 @@ function Review({ form, onDeployed }: { form: TokenForm; onDeployed: (d: Deploym
 
   return (
     <div className="space-y-5">
-      <Panel title="What will be deployed">
-        <div className="rounded-control border border-dashed border-line bg-paper p-4 font-mono text-[13px] leading-6 overflow-x-auto">
-          <p className="text-muted">// StudioTRC20 constructor</p>
-          <p>name&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;= &quot;{form.name}&quot;</p>
-          <p>symbol&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;= &quot;{form.symbol.toUpperCase()}&quot;</p>
-          <p>decimals&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;= {form.decimals}</p>
-          <p>initialSupply = {supplyBase.toString()}</p>
-          <p>mintable&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;= {String(form.mintable)}</p>
-          <p>cap&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;= {capBase.toString()}</p>
-        </div>
-        <dl className="mt-4">
+      <Panel title="Summary">
+        <dl>
           <Row k="Network" v={net.label} />
           <Row k="Owner wallet" v={<Hash value={w.address!} head={8} tail={6} />} />
           <Row k="Initial supply" v={<span className="figures">{fromBaseUnits(supplyBase, form.decimals)} {form.symbol.toUpperCase()}</span>} />
