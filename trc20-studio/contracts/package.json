@@ -1,0 +1,17 @@
+{
+  "name": "trc20-studio-contracts",
+  "private": true,
+  "scripts": {
+    "test": "hardhat test",
+    "compile": "hardhat compile && node scripts/export-artifact.js",
+    "deploy:nile": "tronbox migrate --network nile --reset",
+    "deploy:shasta": "tronbox migrate --network shasta --reset",
+    "deploy:mainnet": "node scripts/confirm-mainnet.js && tronbox migrate --network mainnet --reset"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^4.0.0",
+    "hardhat": "^2.22.0",
+    "tronbox": "^3.4.0",
+    "dotenv": "^16.4.5"
+  }
+}

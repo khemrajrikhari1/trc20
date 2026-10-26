@@ -1,0 +1,96 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url       = env("DATABASE_URL")
+  // Neon/pgbouncer: migrations need a direct (unpooled) connection
+  directUrl = env("DATABASE_URL_UNPOOLED")
+}
+
+enum Network {
+  mainnet
+  nile
+  shasta
+}
+
+enum ChainStatus {
+  PENDING
+  CONFIRMED
+  FAILED
+}
+
+/// A wallet that has signed in. No keys, no seed phrases — only the public address.
+model User {
+  id          String       @id @default(cuid())
+  address     String       @unique // base58 T-address
+  createdAt   DateTime     @default(now())
+  lastLoginAt DateTime     @default(now())
+  deployments Deployment[]
+  txs         TxRecord[]
+}
+
+/// Single-use sign-in challenges.
+model AuthNonce {
+  id        String   @id @default(cuid())
+  address   String
+  nonce     String   @unique
+  message   String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([address])
+}
+
+model Deployment {
+  id              String      @id @default(cuid())
+  userId          String
+  user            User        @relation(fields: [userId], references: [id])
+  network         Network
+  name            String
+  symbol          String
+  decimals        Int
+  initialSupply   String      // whole tokens, as entered
+  mintable        Boolean
+  cap             String      // whole tokens, "0" = none
+  description     String?
+  website         String?
+  logoUrl         String?
+  txHash          String      @unique
+  contractAddress String?     // base58, set from the chain receipt
+  status          ChainStatus @default(PENDING)
+  energyUsed      BigInt?
+  feeSun          BigInt?     // total fee actually paid, from receipt
+  blockNumber     BigInt?
+  failureReason   String?
+  bytecodeSha256  String
+  createdAt       DateTime    @default(now())
+  confirmedAt     DateTime?
+
+  @@index([userId, network])
+}
+
+/// Transfers initiated from this app, tracked until the chain confirms or rejects them.
+model TxRecord {
+  id            String      @id @default(cuid())
+  userId        String
+  user          User        @relation(fields: [userId], references: [id])
+  network       Network
+  txHash        String      @unique
+  kind          String      // "trc20_transfer" | "trx_transfer"
+  fromAddress   String
+  toAddress     String
+  tokenAddress  String?
+  amount        String      // human-readable amount as submitted
+  symbol        String?
+  status        ChainStatus @default(PENDING)
+  feeSun        BigInt?
+  blockNumber   BigInt?
+  failureReason String?
+  createdAt     DateTime    @default(now())
+  confirmedAt   DateTime?
+
+  @@index([userId, network])
+}
